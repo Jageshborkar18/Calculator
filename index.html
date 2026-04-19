@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Calculator (React)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #080808; color: #e8e8e8; font-family: 'JetBrains Mono', monospace; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+    body::before { content: ''; position: fixed; inset: 0; background: radial-gradient(ellipse at 50% 50%, rgba(168,255,120,0.03) 0%, transparent 70%); pointer-events: none; }
+    #root { display:flex; flex-direction:column; align-items:center; gap:20px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+const BUTTONS = [
+  [{ l:'AC', t:'clear', span:2 }, { l:'±', t:'sign' }, { l:'÷', t:'op', v:'/' }],
+  [{ l:'7', t:'num' },{ l:'8', t:'num' },{ l:'9', t:'num' },{ l:'×', t:'op', v:'*' }],
+  [{ l:'4', t:'num' },{ l:'5', t:'num' },{ l:'6', t:'num' },{ l:'−', t:'op', v:'-' }],
+  [{ l:'1', t:'num' },{ l:'2', t:'num' },{ l:'3', t:'num' },{ l:'+', t:'op', v:'+' }],
+  [{ l:'0', t:'num', span:2 },{ l:'.', t:'dot' },{ l:'=', t:'eq' }],
+];
+
+const btnColor = (t, l) => {
+  if (t === 'clear' || t === 'sign') return { bg:'#2a2a2a', color:'#e8e8e8' };
+  if (t === 'op' || l === '÷') return { bg:'#1e3a1e', color:'#a8ff78', border:'1px solid rgba(168,255,120,0.25)' };
+  if (t === 'eq') return { bg:'#a8ff78', color:'#000' };
+  return { bg:'#161616', color:'#e8e8e8', border:'1px solid #1e1e1e' };
+};
+
+function Calc() {
+  const [display, setDisplay]   = useState('0');
+  const [prev, setPrev]         = useState(null);
+  const [op, setOp]             = useState(null);
+  const [waitNext, setWaitNext] = useState(false);
+  const [expr, setExpr]         = useState('');
+  const [history, setHistory]   = useState([]);
+  const [flash, setFlash]       = useState(false);
+
+  const trigFlash = () => { setFlash(true); setTimeout(() => setFlash(false), 100); };
+
+  const calculate = (a, b, o) => {
+    const x = parseFloat(a), y = parseFloat(b);
+    if (o === '+') return x + y;
+    if (o === '-') return x - y;
+    if (o === '*') return x * y;
+    if (o === '/') return y === 0 ? 'Error' : x / y;
+    return b;
+  };
+
+  const fmt = (n) => {
+    if (n === 'Error') return 'Error';
+    const s = parseFloat(n.toString());
+    if (isNaN(s)) return '0';
+    if (Math.abs(s) > 1e12) return s.toExponential(4);
+    const r = parseFloat(s.toPrecision(10));
+    return r.toString();
+  };
+
+  const handleNum = (n) => {
+    trigFlash();
+    if (display.length >= 12 && !waitNext) return;
+    if (waitNext) { setDisplay(n); setWaitNext(false); return; }
+    setDisplay(display === '0' ? n : display + n);
+  };
+
+  const handleOp = (o) => {
+    trigFlash();
+    if (prev !== null && !waitNext) {
+      const res = calculate(prev, display, op);
+      const r = fmt(res);
+      setExpr(`${prev} ${opSym(op)} ${display} =`);
+      setDisplay(r); setPrev(r); setOp(o); setWaitNext(true);
+    } else {
+      setPrev(display); setOp(o); setWaitNext(true);
+      setExpr(`${display} ${opSym(o)}`);
+    }
+  };
+
+  const opSym = (o) => ({ '+':'+', '-':'−', '*':'×', '/':'÷' }[o] || o);
+
+  const handleEq = () => {
+    if (!op || prev === null) return;
+    trigFlash();
+    const res = calculate(prev, display, op);
+    const r = fmt(res);
+    const entry = `${prev} ${opSym(op)} ${display} = ${r}`;
+    setHistory(h => [entry, ...h].slice(0, 5));
+    setExpr(entry);
+    setDisplay(r); setPrev(null); setOp(null); setWaitNext(true);
+  };
+
+  const handleClear = () => {
+    trigFlash();
+    setDisplay('0'); setPrev(null); setOp(null); setWaitNext(false); setExpr('');
+  };
+
+  const handleSign = () => { setDisplay(d => (parseFloat(d) * -1).toString()); };
+  const handleDot  = () => { if (!display.includes('.')) setDisplay(d => d + '.'); };
+
+  useEffect(() => {
+    const h = (e) => {
+      if ('0123456789'.includes(e.key)) handleNum(e.key);
+      else if (e.key === '+') handleOp('+');
+      else if (e.key === '-') handleOp('-');
+      else if (e.key === '*') handleOp('*');
+      else if (e.key === '/') { e.preventDefault(); handleOp('/'); }
+      else if (e.key === 'Enter' || e.key === '=') handleEq();
+      else if (e.key === 'Escape') handleClear();
+      else if (e.key === '.') handleDot();
+      else if (e.key === 'Backspace') setDisplay(d => d.length > 1 ? d.slice(0,-1) : '0');
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  });
+
+  const dispLen = display.length;
+  const fontSize = dispLen > 10 ? '1.8rem' : dispLen > 7 ? '2.4rem' : '3rem';
+
+  return (
+    <>
+      <div style={{ background:'#111', border:'1px solid #1e1e1e', borderRadius:'24px', width:'320px', overflow:'hidden', boxShadow:'0 24px 80px rgba(0,0,0,0.7)' }}>
+        <div style={{ background:'#0d0d0d', padding:'28px 24px 20px', borderBottom:'1px solid #1a1a1a', minHeight:'120px', display:'flex', flexDirection:'column', justifyContent:'flex-end' }}>
+          <div style={{ fontSize:'0.68rem', color:'#333', marginBottom:'6px', minHeight:'16px', letterSpacing:'0.05em', textAlign:'right' }}>{expr || '\u00A0'}</div>
+          <div style={{ fontSize, fontFamily:"'JetBrains Mono',monospace", fontWeight:600, textAlign:'right', letterSpacing:'-1px', lineHeight:1, color: flash ? '#a8ff78' : '#e8e8e8', transition:'color 0.08s', wordBreak:'break-all' }}>{display}</div>
+          {op && <div style={{ fontSize:'0.65rem', color:'#a8ff78', textAlign:'right', marginTop:'4px' }}>{opSym(op)}</div>}
+        </div>
+        <div style={{ padding:'16px', display:'flex', flexDirection:'column', gap:'10px' }}>
+          {BUTTONS.map((row, ri) => (
+            <div key={ri} style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:'10px' }}>
+              {row.map((btn, bi) => {
+                const { bg, color, border } = btnColor(btn.t, btn.l);
+                return (
+                  <button key={bi} onClick={() => { if (btn.t === 'num') handleNum(btn.l); else if (btn.t === 'op') handleOp(btn.v || btn.l); else if (btn.l === '÷') handleOp('/'); else if (btn.t === 'eq') handleEq(); else if (btn.t === 'clear') handleClear(); else if (btn.t === 'sign') handleSign(); else if (btn.t === 'dot') handleDot(); }} style={{ gridColumn: btn.span ? `span ${btn.span}` : undefined, background: bg, color, border: border || 'none', borderRadius:'12px', padding:'16px 0', fontFamily:"'JetBrains Mono',monospace", fontSize:'1.05rem', fontWeight:600, cursor:'pointer', transition:'transform 0.1s, opacity 0.1s' }} onMouseDown={e => e.currentTarget.style.transform='scale(0.93)'} onMouseUp={e => e.currentTarget.style.transform='scale(1)'} onMouseLeave={e => e.currentTarget.style.transform='scale(1)'}>{btn.l}</button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+      {history.length > 0 && (
+        <div style={{ background:'#111', border:'1px solid #1e1e1e', borderRadius:'14px', width:'320px', padding:'16px 20px' }}>
+          <div style={{ fontSize:'0.65rem', color:'#555', letterSpacing:'0.15em', textTransform:'uppercase', marginBottom:'10px' }}>History</div>
+          {history.map((h, i) => (
+            <div key={i} style={{ fontSize:'0.72rem', color: i===0 ? '#a8ff78' : '#333', marginBottom:'4px', letterSpacing:'0.02em' }}>{h}</div>
+          ))}
+        </div>
+      )}
+      <div style={{ fontSize:'0.65rem', color:'#333', letterSpacing:'0.08em' }}>keyboard supported · press ESC to clear</div>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Calc/>);
+</script>
+</body>
+</html>
